@@ -1,28 +1,36 @@
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
   subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-space-grotesk",
+  display: "swap",
 });
 
 export const metadata = {
-  title: "Hire Sense AI",
-  description: "AI-powered interview preparation platform",
+  title: "HireSense AI — Practice Smarter. Get Hired Faster.",
+  description:
+    "AI-powered mock interviews with voice recognition, resume analysis, and personalized feedback. Ace your next interview with HireSense AI.",
+  keywords: "AI interview, mock interview, resume analysis, voice interview, job preparation, Groq AI",
+  authors: [{ name: "HireSense AI Team" }],
+  openGraph: {
+    title: "HireSense AI — Practice Smarter. Get Hired Faster.",
+    description: "AI-powered mock interviews with voice recognition, resume analysis, and personalized feedback.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
+      <body style={{ minHeight: "100vh" }}>{children}</body>
     </html>
   );
 }
