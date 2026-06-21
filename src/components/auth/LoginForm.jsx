@@ -26,7 +26,12 @@ export default function LoginForm() {
         const me = await api.get("/api/auth/me");
         if (me.data.success) {
           login(me.data.user);
-          router.push("/dashboard");
+          // ── Role-based redirect ───────────────────────────────────────────
+          if (me.data.user?.role === "admin") {
+            router.push("/admin/dashboard");
+          } else {
+            router.push("/dashboard");
+          }
         }
       }
     } catch (err) {

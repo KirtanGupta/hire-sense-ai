@@ -1,5 +1,6 @@
 import { connectMongo } from "@/lib/mongodb";
 import InterviewSession from "@/models/InterviewSession";
+import User from "@/models/User";
 import { verifyToken } from "@/lib/auth";
 
 function getToken(request) {
@@ -17,6 +18,11 @@ export async function GET(request) {
   try {
     const payload = verifyToken(token);
     await connectMongo();
+
+    const user = await User.findById(payload.userId).select("isBlocked").lean();
+    if (!user || user.isBlocked) {
+      return new Response(JSON.stringify({ success: false, message: "Your account has been blocked." }), { status: 403 });
+    }
     const sessions = await InterviewSession.find({ userId: payload.userId })
       .sort({ createdAt: -1 })
       .select("role difficulty experience status totalQuestions createdAt")

@@ -13,12 +13,32 @@ const EvaluationSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// ─── Phase 7: Speech Data per Question ───────────────────────────────────────
+const SpeechDataSchema = new mongoose.Schema(
+  {
+    fillerCount: { type: Number, default: 0 },
+    fillerWords: { type: [String], default: [] },
+    totalWords: { type: Number, default: 0 },
+    wpm: { type: Number, default: 0 },
+    speedClassification: { type: String, default: "" },
+    confidenceScore: { type: Number, default: 0 },
+    voiceQualityScore: { type: Number, default: 0 },
+    durationSeconds: { type: Number, default: 0 },
+    pauseObservation: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
 const QuestionSchema = new mongoose.Schema(
   {
     question: { type: String, required: true },
     answer: { type: String, default: "" },
     type: { type: String, default: "technical" },
     evaluation: { type: EvaluationSchema, default: null },
+    // ─── Phase 7 Voice Fields ─────────────────────────────────────────────
+    answerMode: { type: String, default: "text", enum: ["text", "voice"] },
+    transcript: { type: String, default: "" },
+    speechData: { type: SpeechDataSchema, default: null },
   },
   { _id: false }
 );
@@ -51,6 +71,17 @@ const InterviewSessionSchema = new mongoose.Schema(
     strengths: { type: [String], default: [] },
     weaknesses: { type: [String], default: [] },
     recommendation: { type: String, default: "" },
+
+    // ─── Phase 7 Voice Analytics Fields ────────────────────────────────────
+    voiceScore: { type: Number, default: null },          // 0-100 voice quality
+    averageWPM: { type: Number, default: null },          // avg speaking speed
+    averageConfidence: { type: Number, default: null },   // avg confidence from speech
+    totalFillerWords: { type: Number, default: 0 },       // total filler count
+    interviewMode: {                                      // "text" | "voice" | "mixed"
+      type: String,
+      default: "text",
+      enum: ["text", "voice", "mixed"],
+    },
   },
   { timestamps: true }
 );

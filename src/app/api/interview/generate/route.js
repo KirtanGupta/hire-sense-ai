@@ -1,5 +1,6 @@
 import { connectMongo } from "@/lib/mongodb";
 import Resume from "@/models/Resume";
+import User from "@/models/User";
 import InterviewSession from "@/models/InterviewSession";
 import { verifyToken } from "@/lib/auth";
 import { generateInterviewQuestions } from "@/services/llmService";
@@ -38,8 +39,13 @@ export async function POST(request) {
 
     const count = Math.min(Math.max(Number(questionCount) || 5, 1), 15);
 
-    // Fetch candidate skills from latest resume
+    // Fetch user and check block status
     await connectMongo();
+    const user = await User.findById(payload.userId).select("isBlocked").lean();
+    if (!user || user.isBlocked) {
+      return new Response(JSON.stringify({ success: false, message: "Your account has been blocked. You cannot start interviews." }), { status: 403 });
+    }
+
     const resume = await Resume.findOne({ userId: payload.userId })
       .sort({ uploadedAt: -1 })
       .lean();

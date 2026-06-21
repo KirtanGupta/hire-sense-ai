@@ -1,5 +1,6 @@
-// ─── Evaluation Service — Phase 6 ────────────────────────────────────────────
+// ─── Evaluation Service — Phase 6 + 7 ────────────────────────────────────────
 // Evaluates interview answers using Groq/Gemini and generates a final report.
+// Phase 7 adds: voiceScore, averageWPM, interviewMode to the session result.
 
 function parseJSONSafe(text) {
   if (!text) return {};
@@ -24,7 +25,7 @@ function clamp(v, min = 0, max = 10) {
   return Math.max(min, Math.min(max, Math.round(Number(v) || 0)));
 }
 
-// ─── NLP Confidence Score ─────────────────────────────────────────────────────
+// ─── NLP Confidence Score (text-based fallback) ───────────────────────────────
 export function calculateConfidenceScore(answers) {
   const fillerPatterns = [
     /\bum\b/gi, /\buh\b/gi, /\blike\b/gi, /\bbasically\b/gi,
@@ -156,7 +157,6 @@ async function evaluateOneAnswer({ role, difficulty, question, answer }) {
     };
   } catch (error) {
     console.error("Answer evaluation error:", error.message);
-    // Graceful fallback — don't block the whole evaluation
     return {
       score: 50, technicalScore: 5, completeness: 5, communication: 5,
       strengths: [], weaknesses: ["Could not evaluate this answer."],
@@ -203,6 +203,66 @@ async function generateFinalReport(params) {
   }
 }
 
+// ─── Phase 7: Voice Analytics Aggregation ────────────────────────────────────
+function aggregateVoiceAnalytics(questions) {
+  const voiceQuestions = questions.filter(
+    (q) => q.answerMode === "voice" && q.speechData
+  );
+
+  if (voiceQuestions.length === 0) {
+    return {
+      voiceScore: null,
+      averageWPM: null,
+      averageConfidence: null,
+      totalFillerWords: 0,
+      interviewMode: "text",
+    };
+  }
+
+  const textCount = questions.filter((q) => !q.answerMode || q.answerMode === "text").length;
+  const voiceCount = voiceQuestions.length;
+
+  let interviewMode = "voice";
+  if (textCount > 0 && voiceCount > 0) interviewMode = "mixed";
+  else if (textCount === questions.length) interviewMode = "text";
+
+  const totalFillerWords = voiceQuestions.reduce(
+    (sum, q) => sum + (q.speechData?.fillerCount || 0), 0
+  );
+
+  const avgWPM = Math.round(
+    voiceQuestions.reduce((sum, q) => sum + (q.speechData?.wpm || 0), 0) / voiceCount
+  );
+
+  const avgConfidence = Math.round(
+    voiceQuestions.reduce((sum, q) => sum + (q.speechData?.confidenceScore || 0), 0) / voiceCount
+  );
+
+  const avgVoiceQuality = Math.round(
+    voiceQuestions.reduce((sum, q) => sum + (q.speechData?.voiceQualityScore || 0), 0) / voiceCount
+  );
+
+  return {
+    voiceScore: avgVoiceQuality,
+    averageWPM: avgWPM,
+    averageConfidence: avgConfidence,
+    totalFillerWords,
+    interviewMode,
+  };
+}
+
+// ─── Phase 7: Final Overall Score Formula ─────────────────────────────────────
+// Technical: 50%, Communication: 20%, Confidence: 15%, Voice: 15%
+function computeOverallScore({ technicalScore, communicationScore, confidenceScore, voiceScore }) {
+  const voice = voiceScore ?? 90; // default to 90 for text-only (no voice penalties)
+  return Math.round(
+    technicalScore * 0.5 +
+    communicationScore * 0.2 +
+    confidenceScore * 0.15 +
+    voice * 0.15
+  );
+}
+
 // ─── Main Orchestrator ────────────────────────────────────────────────────────
 export async function evaluateSession(session) {
   const { role, difficulty, experience, questions } = session;
@@ -226,10 +286,8 @@ export async function evaluateSession(session) {
     }
   }
 
-  // 2. Compute aggregate scores
+  // 2. Compute aggregate LLM scores
   const scores = questionEvaluations.map((e) => e.score);
-  const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-
   const avgTechnical = Math.round(
     (questionEvaluations.reduce((a, e) => a + e.technicalScore, 0) / questionEvaluations.length) * 10
   );
@@ -237,39 +295,60 @@ export async function evaluateSession(session) {
     (questionEvaluations.reduce((a, e) => a + e.communication, 0) / questionEvaluations.length) * 10
   );
 
-  // 3. NLP Confidence Score
+  // 3. NLP Confidence Score (text-based)
   const allAnswers = questions.map((q) => q.answer || "");
   const confidenceScore = calculateConfidenceScore(allAnswers);
 
-  // 4. Collect all strengths/weaknesses for the final report
+  // 4. Phase 7 — Voice analytics aggregation
+  const voiceAnalytics = aggregateVoiceAnalytics(questions);
+
+  // 5. Phase 7 — Final score: Technical 50% + Communication 20% + Confidence 15% + Voice 15%
+  const overallScore = computeOverallScore({
+    technicalScore: avgTechnical,
+    communicationScore: avgCommunication,
+    confidenceScore,
+    voiceScore: voiceAnalytics.voiceScore,
+  });
+
+  // 6. Collect all strengths/weaknesses for the final report
   const allStrengths = questionEvaluations.flatMap((e) => e.strengths).filter(Boolean);
   const allWeaknesses = questionEvaluations.flatMap((e) => e.weaknesses).filter(Boolean);
 
-  // 5. Generate final summary report
+  // 7. Generate final summary report
   const finalReport = await generateFinalReport({
-    role, difficulty, experience, avgScore,
+    role, difficulty, experience, avgScore: overallScore,
     topStrengths: [...new Set(allStrengths)],
     topWeaknesses: [...new Set(allWeaknesses)],
   });
 
-  // 6. Build evaluated questions array
+  // 8. Build evaluated questions array
   const evaluatedQuestions = questions.map((q, i) => ({
     question: q.question,
     answer: q.answer || "",
     type: q.type || "technical",
     evaluation: questionEvaluations[i],
+    // Preserve Phase 7 voice fields
+    answerMode: q.answerMode || "text",
+    transcript: q.transcript || "",
+    speechData: q.speechData || null,
   }));
 
-  console.log(`[Evaluation] Complete. Overall score: ${avgScore}%`);
+  console.log(`[Evaluation] Complete. Overall score: ${overallScore}% | Mode: ${voiceAnalytics.interviewMode}`);
 
   return {
     evaluatedQuestions,
-    overallScore: avgScore,
+    overallScore,
     technicalScore: avgTechnical,
     communicationScore: avgCommunication,
     confidenceScore,
     strengths: finalReport.strengths,
     weaknesses: finalReport.weaknesses,
     recommendation: finalReport.recommendation,
+    // Phase 7 voice fields
+    voiceScore: voiceAnalytics.voiceScore,
+    averageWPM: voiceAnalytics.averageWPM,
+    averageConfidence: voiceAnalytics.averageConfidence,
+    totalFillerWords: voiceAnalytics.totalFillerWords,
+    interviewMode: voiceAnalytics.interviewMode,
   };
 }

@@ -16,12 +16,32 @@ const difficultyColors = {
   Hard: "#f87171",
 };
 
+const modeConfig = {
+  voice: { label: "🎤 Voice", color: "#f472b6", bg: "rgba(236,72,153,0.1)", border: "rgba(236,72,153,0.25)" },
+  mixed: { label: "⚡ Mixed", color: "#c084fc", bg: "rgba(139,92,246,0.1)", border: "rgba(139,92,246,0.25)" },
+  text: { label: "📝 Text", color: "#a5b4fc", bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.2)" },
+};
+
 function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
+}
+
+function ScoreBadge({ value, color }) {
+  if (value == null) return <span style={{ color: "#475569", fontSize: "0.85rem" }}>—</span>;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      padding: "0.25rem 0.6rem", borderRadius: "999px",
+      background: `${color}15`, border: `1px solid ${color}35`,
+      color, fontWeight: 700, fontSize: "0.85rem",
+    }}>
+      {value}%
+    </span>
+  );
 }
 
 export default function HistoryList() {
@@ -87,17 +107,20 @@ export default function HistoryList() {
     );
   }
 
+  // Grid: Role | Difficulty | Date | Overall | Confidence | Mode | Status
+  const gridCols = "1fr 90px 110px 90px 100px 100px auto";
+
   return (
-    <div style={{ display: "grid", gap: "1.25rem" }}>
+    <div style={{ display: "grid", gap: "1rem" }}>
       {/* Header row */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 90px 110px 110px 80px auto",
+          gridTemplateColumns: gridCols,
           gap: "1rem",
           padding: "0.75rem 1.5rem",
           color: "#64748b",
-          fontSize: "0.82rem",
+          fontSize: "0.79rem",
           fontWeight: 600,
           textTransform: "uppercase",
           letterSpacing: "0.06em",
@@ -105,22 +128,24 @@ export default function HistoryList() {
       >
         <span>Role</span>
         <span>Difficulty</span>
-        <span>Experience</span>
         <span>Date</span>
-        <span>Questions</span>
+        <span>Overall</span>
+        <span>Confidence</span>
+        <span>Mode</span>
         <span>Status</span>
       </div>
 
       {sessions.map((session) => {
         const sc = statusColors[session.status] || statusColors["in-progress"];
+        const mode = modeConfig[session.interviewMode || "text"] || modeConfig.text;
         return (
           <div
             key={session._id}
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 90px 110px 110px 80px auto",
+              gridTemplateColumns: gridCols,
               gap: "1rem",
-              padding: "1.25rem 1.5rem",
+              padding: "1.1rem 1.5rem",
               borderRadius: "1.25rem",
               background: "rgba(255,255,255,0.04)",
               border: "1px solid rgba(148,163,184,0.1)",
@@ -137,7 +162,7 @@ export default function HistoryList() {
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-              e.currentTarget.style.borderColor = "rgba(148,163,184,0.2)";
+              e.currentTarget.style.borderColor = "rgba(148,163,184,0.22)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = "rgba(255,255,255,0.04)";
@@ -146,24 +171,36 @@ export default function HistoryList() {
           >
             {/* Role */}
             <div>
-              <p style={{ color: "#f8fafc", fontWeight: 600, margin: 0 }}>{session.role}</p>
+              <p style={{ color: "#f8fafc", fontWeight: 600, margin: 0, fontSize: "0.95rem" }}>{session.role}</p>
+              <p style={{ color: "#64748b", margin: "0.2rem 0 0", fontSize: "0.8rem" }}>{session.experience}</p>
             </div>
 
             {/* Difficulty */}
-            <span style={{ color: difficultyColors[session.difficulty] || "#94a3b8", fontWeight: 600, fontSize: "0.9rem" }}>
+            <span style={{ color: difficultyColors[session.difficulty] || "#94a3b8", fontWeight: 600, fontSize: "0.88rem" }}>
               {session.difficulty}
             </span>
 
-            {/* Experience */}
-            <span style={{ color: "#94a3b8", fontSize: "0.9rem" }}>{session.experience}</span>
-
             {/* Date */}
-            <span style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
+            <span style={{ color: "#94a3b8", fontSize: "0.88rem" }}>
               {formatDate(session.createdAt)}
             </span>
 
-            {/* Questions */}
-            <span style={{ color: "#94a3b8", fontSize: "0.9rem" }}>{session.totalQuestions}</span>
+            {/* Overall Score */}
+            <ScoreBadge value={session.overallScore} color="#6366f1" />
+
+            {/* Confidence Score */}
+            <ScoreBadge value={session.confidenceScore} color="#f59e0b" />
+
+            {/* Mode badge */}
+            <span style={{
+              display: "inline-flex", alignItems: "center",
+              padding: "0.28rem 0.7rem", borderRadius: "999px",
+              background: mode.bg, border: `1px solid ${mode.border}`,
+              color: mode.color, fontSize: "0.78rem", fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}>
+              {mode.label}
+            </span>
 
             {/* Status badge */}
             <span

@@ -23,6 +23,7 @@ export async function POST(request) {
     return new Response(JSON.stringify({ success: false, message: "Invalid credentials" }), { status: 401 });
   }
 
+
   const token = generateToken(user._id.toString(), user.role);
   const response = new Response(JSON.stringify({ success: true, role: user.role }), { status: 200 });
 

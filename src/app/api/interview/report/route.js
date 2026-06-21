@@ -1,5 +1,6 @@
 import { connectMongo } from "@/lib/mongodb";
 import InterviewSession from "@/models/InterviewSession";
+import User from "@/models/User";
 import { verifyToken } from "@/lib/auth";
 
 function getToken(request) {
@@ -31,10 +32,19 @@ export async function GET(request) {
     }
 
     await connectMongo();
-    const session = await InterviewSession.findOne({
-      _id: sessionId,
-      userId: payload.userId,
-    }).lean();
+
+    const user = await User.findById(payload.userId).select("isBlocked role").lean();
+    if (!user || user.isBlocked) {
+      return new Response(JSON.stringify({ success: false, message: "Your account has been blocked." }), { status: 403 });
+    }
+
+    // Admins can view any session; regular users can only view their own
+    const query = { _id: sessionId };
+    if (user.role !== "admin") {
+      query.userId = payload.userId;
+    }
+
+    const session = await InterviewSession.findOne(query).lean();
 
     if (!session) {
       return new Response(

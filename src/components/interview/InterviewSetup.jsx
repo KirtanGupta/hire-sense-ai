@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import useAuthStore from "@/store/authStore";
 
 const BASE_ROLES = [
   "MERN Developer",
@@ -31,6 +32,7 @@ export default function InterviewSetup() {
   const [questionCount, setQuestionCount] = useState(5);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const user = useAuthStore((state) => state.user);
 
   // Resume-detected data
   const [resumeRole, setResumeRole] = useState("");
@@ -84,7 +86,7 @@ export default function InterviewSetup() {
       if (data.success) {
         router.push(`/interview/session/${data.sessionId}`);
       } else {
-        setError(data.message || "Failed to generate interview.");
+        setError(data.message || "Your account has been blocked. You cannot start interviews.");
       }
     } catch {
       setError("Network error. Please try again.");
@@ -95,6 +97,27 @@ export default function InterviewSetup() {
 
   return (
     <div style={{ maxWidth: 780, margin: "0 auto", display: "grid", gap: "1.5rem" }}>
+      {/* ── Block Warning Banner ── */}
+      {user?.isBlocked && (
+        <div style={{
+          backgroundColor: "rgba(239,68,68,0.1)",
+          border: "1px solid rgba(239,68,68,0.4)",
+          color: "#f87171",
+          padding: "1rem 1.5rem",
+          borderRadius: "0.75rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "1rem"
+        }}>
+          <span style={{ fontSize: "1.5rem" }}>🚫</span>
+          <div>
+            <h3 style={{ margin: "0 0 0.25rem", color: "#fca5a5" }}>Account Blocked</h3>
+            <p style={{ margin: 0, fontSize: "0.9rem" }}>
+              Your account is blocked. You cannot generate new interviews.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Resume context banner */}
       {!resumeLoading && (resumeRole || resumeSkills.length > 0) && (
@@ -327,7 +350,7 @@ export default function InterviewSetup() {
               {role} · {difficulty} · {experience} · {questionCount} Questions
             </p>
           </div>
-          <button onClick={handleGenerate} disabled={loading} style={generateBtnStyle(loading)}>
+          <button onClick={handleGenerate} disabled={loading || user?.isBlocked} style={generateBtnStyle(loading || user?.isBlocked)}>
             {loading ? (
               <>
                 <span style={spinnerStyle} />

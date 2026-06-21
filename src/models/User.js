@@ -27,6 +27,11 @@ const UserSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // ── Phase 8.2: Block / Unblock ─────────────────────────────────────────
+    isBlocked: {
+      type: Boolean,
+      default: false,
+    },
     createdAt: {
       type: Date,
       default: Date.now,

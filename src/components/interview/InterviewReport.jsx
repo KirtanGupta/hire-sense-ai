@@ -93,6 +93,27 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
+// ─── Speaking Speed Badge ─────────────────────────────────────────────────────
+function SpeedBadge({ classification }) {
+  const colors = {
+    Slow: { bg: "rgba(251,191,36,0.1)", border: "rgba(251,191,36,0.3)", text: "#fbbf24" },
+    Normal: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.3)", text: "#4ade80" },
+    Fast: { bg: "rgba(99,102,241,0.1)", border: "rgba(99,102,241,0.3)", text: "#a5b4fc" },
+    "Very Fast": { bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.3)", text: "#f87171" },
+    "N/A": { bg: "rgba(148,163,184,0.1)", border: "rgba(148,163,184,0.2)", text: "#94a3b8" },
+  };
+  const c = colors[classification] || colors["N/A"];
+  return (
+    <span style={{
+      padding: "0.25rem 0.75rem", borderRadius: "999px",
+      background: c.bg, border: `1px solid ${c.border}`,
+      color: c.text, fontWeight: 700, fontSize: "0.82rem",
+    }}>
+      {classification}
+    </span>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function InterviewReport({ sessionId }) {
   const router = useRouter();
@@ -108,9 +129,8 @@ export default function InterviewReport({ sessionId }) {
     setStatus("evaluating");
     setFakeProgress(0);
 
-    // Animate fake progress while waiting
     const totalQ = sess?.totalQuestions || 5;
-    const estimatedMs = totalQ * 3000; // ~3s per question
+    const estimatedMs = totalQ * 3000;
     const interval = setInterval(() => {
       setFakeProgress((p) => Math.min(p + (100 / (estimatedMs / 400)), 88));
     }, 400);
@@ -159,7 +179,6 @@ export default function InterviewReport({ sessionId }) {
           setSession(s);
           setStatus("ready");
         } else if (s.status === "completed") {
-          // Auto-trigger evaluation
           await triggerEvaluation(s);
         } else {
           setStatus("not-completed");
@@ -209,7 +228,6 @@ export default function InterviewReport({ sessionId }) {
           Analyzing {totalQ} questions with Groq AI. Evaluating technical accuracy, completeness,
           communication, and running NLP confidence analysis…
         </p>
-        {/* Progress bar */}
         <div style={{ marginBottom: "0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ color: "#94a3b8", fontSize: "0.85rem" }}>Processing…</span>
           <span style={{ color: "#a5b4fc", fontWeight: 700, fontSize: "0.9rem" }}>
@@ -266,15 +284,30 @@ export default function InterviewReport({ sessionId }) {
     score: q.evaluation?.score ?? 0,
   }));
 
+  const hasVoice = session.interviewMode === "voice" || session.interviewMode === "mixed";
+  const voiceQuestions = (session.questions || []).filter(
+    (q) => q.answerMode === "voice" && q.speechData
+  );
+  const totalVoiceWPM = voiceQuestions.length > 0
+    ? Math.round(voiceQuestions.reduce((s, q) => s + (q.speechData?.wpm || 0), 0) / voiceQuestions.length)
+    : null;
+  const totalFillers = voiceQuestions.reduce((s, q) => s + (q.speechData?.fillerCount || 0), 0);
+
   const skillData = [
     { skill: "Technical", score: session.technicalScore ?? 0 },
     { skill: "Communication", score: session.communicationScore ?? 0 },
-    { skill: "Confidence", score: session.confidenceScore ?? 0 },
+    { skill: "Confidence (NLP)", score: session.confidenceScore ?? 0 },
+    ...(hasVoice ? [{ skill: "Voice Quality", score: session.voiceScore ?? 0 }] : []),
   ];
 
   const date = new Date(session.createdAt).toLocaleDateString("en-IN", {
     day: "2-digit", month: "short", year: "numeric",
   });
+
+  const modeLabel =
+    session.interviewMode === "voice" ? "🎤 Voice"
+    : session.interviewMode === "mixed" ? "⚡ Mixed"
+    : "📝 Text";
 
   return (
     <div style={{ maxWidth: 920, margin: "0 auto", display: "grid", gap: "1.75rem" }}>
@@ -295,6 +328,20 @@ export default function InterviewReport({ sessionId }) {
             <span style={{ ...tagStyle, background: "rgba(34,197,94,0.1)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.25)" }}>
               ✓ Evaluated
             </span>
+            <span style={{
+              ...tagStyle,
+              background: session.interviewMode === "voice" ? "rgba(236,72,153,0.1)"
+                : session.interviewMode === "mixed" ? "rgba(139,92,246,0.1)"
+                : "rgba(99,102,241,0.1)",
+              color: session.interviewMode === "voice" ? "#f472b6"
+                : session.interviewMode === "mixed" ? "#c084fc"
+                : "#a5b4fc",
+              border: `1px solid ${session.interviewMode === "voice" ? "rgba(236,72,153,0.25)"
+                : session.interviewMode === "mixed" ? "rgba(139,92,246,0.25)"
+                : "rgba(99,102,241,0.25)"}`,
+            }}>
+              {modeLabel}
+            </span>
           </div>
           <h2 style={{ color: "#f8fafc", fontSize: "1.4rem", fontWeight: 700, margin: 0 }}>
             Interview Performance Report
@@ -314,20 +361,120 @@ export default function InterviewReport({ sessionId }) {
         </div>
       </div>
 
-      {/* ── Score Overview (3 circles) ── */}
+      {/* ── Score Overview (3 or 4 circles) ── */}
       <div style={cardStyle}>
         <h3 style={sectionTitle}>Overall Scores</h3>
         <div style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gridTemplateColumns: `repeat(auto-fit, minmax(150px, 1fr))`,
           gap: "2rem", placeItems: "center", padding: "1rem 0",
         }}>
           <CircularScore score={session.overallScore} size={170} label="Overall Score" color="#6366f1" />
           <CircularScore score={session.technicalScore} size={150} label="Technical Score" color="#06b6d4" />
           <CircularScore score={session.communicationScore} size={150} label="Communication" color="#8b5cf6" />
           <CircularScore score={session.confidenceScore} size={150} label="Confidence (NLP)" color="#f59e0b" />
+          {hasVoice && (
+            <CircularScore score={session.voiceScore ?? 0} size={150} label="Voice Quality" color="#ec4899" />
+          )}
         </div>
       </div>
+
+      {/* ── Phase 7: Speech Analysis Card (only if voice was used) ── */}
+      {hasVoice && (
+        <div style={{
+          ...cardStyle,
+          background: "rgba(236,72,153,0.05)",
+          border: "1px solid rgba(236,72,153,0.2)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.5rem" }}>
+            <span style={{ fontSize: "1.75rem" }}>🎙️</span>
+            <h3 style={{ color: "#f8fafc", fontSize: "1.05rem", fontWeight: 700, margin: 0 }}>
+              Speech Analysis
+            </h3>
+            <span style={{
+              marginLeft: "auto",
+              padding: "0.25rem 0.75rem", borderRadius: "999px",
+              background: "rgba(236,72,153,0.12)", border: "1px solid rgba(236,72,153,0.3)",
+              color: "#f472b6", fontSize: "0.82rem", fontWeight: 600,
+            }}>
+              {voiceQuestions.length} voice answer{voiceQuestions.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "1rem",
+          }}>
+            {/* Speaking Speed */}
+            <div style={speechStatCard}>
+              <p style={speechStatLabel}>⚡ Speaking Speed</p>
+              <p style={{ color: "#f8fafc", fontSize: "1.6rem", fontWeight: 800, margin: "0.25rem 0" }}>
+                {totalVoiceWPM ?? "—"} <span style={{ fontSize: "0.9rem", color: "#94a3b8", fontWeight: 400 }}>WPM</span>
+              </p>
+              <SpeedBadge classification={
+                !totalVoiceWPM ? "N/A"
+                : totalVoiceWPM < 80 ? "Slow"
+                : totalVoiceWPM <= 150 ? "Normal"
+                : totalVoiceWPM <= 200 ? "Fast"
+                : "Very Fast"
+              } />
+            </div>
+
+            {/* Confidence */}
+            <div style={speechStatCard}>
+              <p style={speechStatLabel}>🧠 Confidence Score</p>
+              <p style={{ color: "#f472b6", fontSize: "1.6rem", fontWeight: 800, margin: "0.25rem 0" }}>
+                {session.averageConfidence ?? session.confidenceScore ?? 0}%
+              </p>
+              <p style={{ color: "#64748b", fontSize: "0.8rem", margin: 0 }}>from voice analysis</p>
+            </div>
+
+            {/* Filler Words */}
+            <div style={speechStatCard}>
+              <p style={speechStatLabel}>💬 Filler Words</p>
+              <p style={{ color: "#fbbf24", fontSize: "1.6rem", fontWeight: 800, margin: "0.25rem 0" }}>
+                {totalFillers}
+              </p>
+              <p style={{ color: "#64748b", fontSize: "0.8rem", margin: 0 }}>
+                {totalFillers === 0 ? "None detected — excellent!" : `um, uh, like, basically…`}
+              </p>
+            </div>
+
+            {/* Voice Quality */}
+            <div style={speechStatCard}>
+              <p style={speechStatLabel}>🎤 Voice Quality</p>
+              <p style={{ color: "#a5b4fc", fontSize: "1.6rem", fontWeight: 800, margin: "0.25rem 0" }}>
+                {session.voiceScore ?? 0}%
+              </p>
+              <p style={{ color: "#64748b", fontSize: "0.8rem", margin: 0 }}>combined voice score</p>
+            </div>
+          </div>
+
+          {/* Score Weight Note */}
+          <div style={{
+            marginTop: "1.25rem",
+            padding: "0.75rem 1rem",
+            borderRadius: "0.75rem",
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(148,163,184,0.08)",
+            display: "flex",
+            gap: "1.5rem",
+            flexWrap: "wrap",
+          }}>
+            {[
+              { label: "Technical", weight: "50%", color: "#06b6d4" },
+              { label: "Communication", weight: "20%", color: "#8b5cf6" },
+              { label: "Confidence", weight: "15%", color: "#f59e0b" },
+              { label: "Voice Quality", weight: "15%", color: "#ec4899" },
+            ].map(({ label, weight, color }) => (
+              <span key={label} style={{ fontSize: "0.8rem", color: "#64748b" }}>
+                {label}: <strong style={{ color }}>{weight}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Question Performance Chart ── */}
       <div style={cardStyle}>
@@ -465,6 +612,7 @@ export default function InterviewReport({ sessionId }) {
             const ev = q.evaluation;
             const isOpen = expandedQ === i;
             const qScore = ev?.score ?? 0;
+            const isVoice = q.answerMode === "voice";
             return (
               <div key={i} style={{
                 borderRadius: "1.1rem",
@@ -493,6 +641,16 @@ export default function InterviewReport({ sessionId }) {
                   <p style={{ flex: 1, color: "#f1f5f9", fontSize: "0.95rem", margin: 0, lineHeight: 1.5 }}>
                     {q.question}
                   </p>
+                  {/* Voice badge */}
+                  {isVoice && (
+                    <span style={{
+                      flexShrink: 0, padding: "0.2rem 0.6rem", borderRadius: "999px",
+                      background: "rgba(236,72,153,0.12)", border: "1px solid rgba(236,72,153,0.3)",
+                      color: "#f472b6", fontSize: "0.75rem", fontWeight: 600,
+                    }}>
+                      🎤 Voice
+                    </span>
+                  )}
                   <span style={{
                     flexShrink: 0, padding: "0.25rem 0.75rem", borderRadius: "999px",
                     background: `${barColor(qScore)}22`,
@@ -526,6 +684,52 @@ export default function InterviewReport({ sessionId }) {
                           </div>
                         ))}
                       </div>
+
+                      {/* Voice Speech Data (if voice answer) */}
+                      {isVoice && q.speechData && (
+                        <div style={{
+                          padding: "0.85rem 1rem", borderRadius: "0.85rem",
+                          background: "rgba(236,72,153,0.05)", border: "1px solid rgba(236,72,153,0.18)",
+                        }}>
+                          <p style={{ color: "#f472b6", fontSize: "0.78rem", fontWeight: 600, marginBottom: "0.6rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                            🎙️ Speech Analytics
+                          </p>
+                          <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap" }}>
+                            {[
+                              { label: "WPM", value: q.speechData.wpm ?? 0 },
+                              { label: "Speed", value: q.speechData.speedClassification || "—" },
+                              { label: "Fillers", value: q.speechData.fillerCount ?? 0 },
+                              { label: "Confidence", value: `${q.speechData.confidenceScore ?? 0}%` },
+                              { label: "Voice Quality", value: `${q.speechData.voiceQualityScore ?? 0}%` },
+                            ].map(({ label, value }) => (
+                              <div key={label} style={{ textAlign: "center" }}>
+                                <p style={{ color: "#64748b", fontSize: "0.72rem", margin: "0 0 0.2rem" }}>{label}</p>
+                                <p style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "0.95rem", margin: 0 }}>{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                          {q.speechData.pauseObservation && (
+                            <p style={{ color: "#94a3b8", fontSize: "0.8rem", marginTop: "0.5rem", marginBottom: 0 }}>
+                              📊 {q.speechData.pauseObservation}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Transcript (voice only) */}
+                      {isVoice && q.transcript && (
+                        <div>
+                          <p style={{ color: "#64748b", fontSize: "0.8rem", marginBottom: "0.4rem" }}>🗣️ Transcript</p>
+                          <p style={{
+                            color: "#94a3b8", fontSize: "0.88rem", lineHeight: 1.65,
+                            padding: "0.75rem 1rem", borderRadius: "0.75rem",
+                            background: "rgba(236,72,153,0.05)", margin: 0,
+                            fontStyle: "italic",
+                          }}>
+                            &quot;{q.transcript}&quot;
+                          </p>
+                        </div>
+                      )}
 
                       {/* Your answer */}
                       {q.answer?.trim() && (
@@ -662,4 +866,20 @@ const smallSpinnerStyle = {
   border: "2px solid rgba(255,255,255,0.3)",
   borderTopColor: "#fff", borderRadius: "50%",
   animation: "spin 0.7s linear infinite",
+};
+
+const speechStatCard = {
+  padding: "1rem 1.25rem",
+  borderRadius: "1rem",
+  background: "rgba(255,255,255,0.03)",
+  border: "1px solid rgba(236,72,153,0.12)",
+};
+
+const speechStatLabel = {
+  color: "#94a3b8",
+  fontSize: "0.78rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.07em",
+  margin: "0 0 0.1rem",
 };

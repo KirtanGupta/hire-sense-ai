@@ -2,6 +2,14 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+import VoiceControls from "@/components/voice/VoiceControls";
+
+// Lazy-load VoiceRecorder (uses browser-only APIs)
+const VoiceRecorder = dynamic(
+  () => import("@/components/voice/VoiceRecorder"),
+  { ssr: false }
+);
 
 export default function InterviewEngine({ sessionId }) {
   const router = useRouter();
@@ -11,6 +19,11 @@ export default function InterviewEngine({ sessionId }) {
   const [status, setStatus] = useState("loading"); // loading | active | submitting | saving | completed | error
   const [errorMsg, setErrorMsg] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
+
+  // ── Phase 7 Voice State ────────────────────────────────────────────────────
+  const [answerModes, setAnswerModes] = useState([]); // "text" | "voice" per question
+  const [speechDataArr, setSpeechDataArr] = useState([]); // speech analytics per question
+
   const autosaveRef = useRef(null);
   const lastSavedRef = useRef({});
 
@@ -26,6 +39,8 @@ export default function InterviewEngine({ sessionId }) {
           const q = data.session;
           setSession(q);
           setAnswers(q.questions.map((item) => item.answer || ""));
+          setAnswerModes(q.questions.map((item) => item.answerMode || "text"));
+          setSpeechDataArr(q.questions.map((item) => item.speechData || null));
           setStatus(q.status === "completed" ? "completed" : "active");
         } else {
           setErrorMsg(data.message || "Session not found.");
@@ -45,11 +60,21 @@ export default function InterviewEngine({ sessionId }) {
       if (lastSavedRef.current[index] === answerText) return; // skip if unchanged
       try {
         if (!silent) setStatus("saving");
+        const mode = answerModes[index] || "text";
+        const speech = speechDataArr[index] || null;
+
         await fetch("/api/interview/answer", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ sessionId, questionIndex: index, answer: answerText }),
+          body: JSON.stringify({
+            sessionId,
+            questionIndex: index,
+            answer: answerText,
+            answerMode: mode,
+            transcript: mode === "voice" ? (speech ? answerText : "") : "",
+            speechData: mode === "voice" ? speech : null,
+          }),
         });
         lastSavedRef.current[index] = answerText;
         if (!silent) {
@@ -65,7 +90,7 @@ export default function InterviewEngine({ sessionId }) {
         }
       }
     },
-    [sessionId]
+    [sessionId, answerModes, speechDataArr]
   );
 
   // ── Autosave every 10 seconds ─────────────────────────────────────────────
@@ -97,10 +122,41 @@ export default function InterviewEngine({ sessionId }) {
     setCurrentIndex(idx);
   }
 
+  // ── Mode switch ────────────────────────────────────────────────────────────
+  function switchMode(newMode) {
+    const updated = [...answerModes];
+    updated[currentIndex] = newMode;
+    setAnswerModes(updated);
+  }
+
+  // ── Voice recording complete callback ─────────────────────────────────────
+  function handleRecordingComplete({ transcript, speechData }) {
+    // Auto-fill the answer textarea with transcript
+    const updated = [...answers];
+    updated[currentIndex] = transcript;
+    setAnswers(updated);
+
+    // Store speech analytics for this question
+    const updatedSpeech = [...speechDataArr];
+    updatedSpeech[currentIndex] = speechData;
+    setSpeechDataArr(updatedSpeech);
+
+    // Set mode to voice
+    const updatedModes = [...answerModes];
+    updatedModes[currentIndex] = "voice";
+    setAnswerModes(updatedModes);
+  }
+
+  // ── Live transcript update (during recording) ─────────────────────────────
+  function handleTranscriptUpdate(liveTranscript) {
+    const updated = [...answers];
+    updated[currentIndex] = liveTranscript;
+    setAnswers(updated);
+  }
+
   // ── Finish interview ──────────────────────────────────────────────────────
   async function handleFinish() {
     setStatus("submitting");
-    // Save current answer first
     await saveAnswer(currentIndex, answers[currentIndex] ?? "", true);
 
     try {
@@ -148,6 +204,7 @@ export default function InterviewEngine({ sessionId }) {
   if (status === "completed") {
     const answeredCount = answers.filter((a) => a.trim().length > 0).length;
     const total = session?.questions?.length || 0;
+    const voiceCount = answerModes.filter((m) => m === "voice").length;
     return (
       <div style={{ maxWidth: 680, margin: "0 auto", textAlign: "center" }}>
         <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>🎉</div>
@@ -156,8 +213,10 @@ export default function InterviewEngine({ sessionId }) {
         </h2>
         <p style={{ color: "#94a3b8", marginBottom: "2rem", lineHeight: 1.7 }}>
           You answered <strong style={{ color: "#f8fafc" }}>{answeredCount}</strong> of{" "}
-          <strong style={{ color: "#f8fafc" }}>{total}</strong> questions. Your session has been
-          saved and is ready for evaluation.
+          <strong style={{ color: "#f8fafc" }}>{total}</strong> questions
+          {voiceCount > 0 && (
+            <> — <strong style={{ color: "#ec4899" }}>🎤 {voiceCount} via voice</strong></>
+          )}. Your session has been saved and is ready for evaluation.
         </p>
         <div
           style={{
@@ -194,6 +253,7 @@ export default function InterviewEngine({ sessionId }) {
   const progress = Math.round(((currentIndex + 1) / total) * 100);
   const answeredCount = answers.filter((a) => a.trim().length > 0).length;
   const currentAnswer = answers[currentIndex] ?? "";
+  const currentMode = answerModes[currentIndex] || "text";
   const isFirst = currentIndex === 0;
   const isLast = currentIndex === total - 1;
 
@@ -259,33 +319,44 @@ export default function InterviewEngine({ sessionId }) {
         {questions.map((_, idx) => {
           const isAnswered = (answers[idx] ?? "").trim().length > 0;
           const isCurrent = idx === currentIndex;
+          const isVoice = (answerModes[idx] || "text") === "voice";
           return (
             <button
               key={idx}
               onClick={() => handleJump(idx)}
-              title={`Question ${idx + 1}`}
+              title={`Question ${idx + 1}${isVoice ? " (voice)" : ""}`}
               style={{
                 width: 32,
                 height: 32,
                 borderRadius: "50%",
                 border: isCurrent
                   ? "2px solid #6366f1"
+                  : isAnswered && isVoice
+                  ? "2px solid rgba(236,72,153,0.6)"
                   : isAnswered
                   ? "2px solid rgba(34,197,94,0.6)"
                   : "2px solid rgba(148,163,184,0.25)",
                 background: isCurrent
                   ? "rgba(99,102,241,0.25)"
+                  : isAnswered && isVoice
+                  ? "rgba(236,72,153,0.12)"
                   : isAnswered
                   ? "rgba(34,197,94,0.12)"
                   : "rgba(148,163,184,0.06)",
-                color: isCurrent ? "#a5b4fc" : isAnswered ? "#4ade80" : "#64748b",
+                color: isCurrent
+                  ? "#a5b4fc"
+                  : isAnswered && isVoice
+                  ? "#f472b6"
+                  : isAnswered
+                  ? "#4ade80"
+                  : "#64748b",
                 fontSize: "0.8rem",
                 fontWeight: 700,
                 cursor: "pointer",
                 transition: "all 0.18s ease",
               }}
             >
-              {idx + 1}
+              {isVoice && isAnswered && !isCurrent ? "🎤" : idx + 1}
             </button>
           );
         })}
@@ -301,6 +372,7 @@ export default function InterviewEngine({ sessionId }) {
           marginBottom: "1.5rem",
         }}
       >
+        {/* Question text */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: "1rem", marginBottom: "1.75rem" }}>
           <span
             style={{
@@ -333,9 +405,19 @@ export default function InterviewEngine({ sessionId }) {
           </p>
         </div>
 
+        {/* ── Mode Toggle ── */}
+        <VoiceControls
+          mode={currentMode}
+          onModeChange={switchMode}
+          isRecording={false}
+        />
+
+        {/* ── Answer label ── */}
         <label style={{ display: "block", color: "#94a3b8", fontSize: "0.88rem", marginBottom: "0.65rem" }}>
-          Your Answer
+          {currentMode === "voice" ? "🎤 Voice Answer (auto-filled from speech)" : "Your Answer"}
         </label>
+
+        {/* ── Textarea ── */}
         <textarea
           value={currentAnswer}
           onChange={(e) => {
@@ -343,14 +425,18 @@ export default function InterviewEngine({ sessionId }) {
             updated[currentIndex] = e.target.value;
             setAnswers(updated);
           }}
-          placeholder="Type your answer here…"
+          placeholder={
+            currentMode === "voice"
+              ? "Click '🎤 Start Recording' below and speak your answer…"
+              : "Type your answer here…"
+          }
           rows={7}
           style={{
             width: "100%",
             padding: "1rem 1.25rem",
             borderRadius: "1rem",
             background: "rgba(15,23,42,0.7)",
-            border: "1px solid rgba(148,163,184,0.18)",
+            border: `1px solid ${currentMode === "voice" ? "rgba(236,72,153,0.25)" : "rgba(148,163,184,0.18)"}`,
             color: "#f1f5f9",
             fontSize: "0.97rem",
             lineHeight: 1.7,
@@ -359,13 +445,64 @@ export default function InterviewEngine({ sessionId }) {
             transition: "border-color 0.2s ease",
             fontFamily: "inherit",
           }}
-          onFocus={(e) => (e.target.style.borderColor = "rgba(99,102,241,0.5)")}
-          onBlur={(e) => (e.target.style.borderColor = "rgba(148,163,184,0.18)")}
+          onFocus={(e) =>
+            (e.target.style.borderColor =
+              currentMode === "voice"
+                ? "rgba(236,72,153,0.5)"
+                : "rgba(99,102,241,0.5)")
+          }
+          onBlur={(e) =>
+            (e.target.style.borderColor =
+              currentMode === "voice"
+                ? "rgba(236,72,153,0.25)"
+                : "rgba(148,163,184,0.18)")
+          }
         />
+
+        {/* ── Voice Recorder (only in voice mode) ── */}
+        {currentMode === "voice" && (
+          <VoiceRecorder
+            onTranscriptUpdate={handleTranscriptUpdate}
+            onRecordingComplete={handleRecordingComplete}
+          />
+        )}
 
         {/* Save feedback */}
         {saveMsg && (
           <p style={{ color: "#4ade80", fontSize: "0.85rem", marginTop: "0.5rem" }}>{saveMsg}</p>
+        )}
+
+        {/* Voice mode badge (if this question was answered by voice) */}
+        {currentMode === "voice" && currentAnswer.trim() && speechDataArr[currentIndex] && (
+          <div
+            style={{
+              display: "flex",
+              gap: "0.65rem",
+              flexWrap: "wrap",
+              marginTop: "0.85rem",
+            }}
+          >
+            {[
+              { label: "WPM", value: speechDataArr[currentIndex]?.wpm ?? 0, color: "#a5b4fc" },
+              { label: "Speed", value: speechDataArr[currentIndex]?.speedClassification ?? "—", color: "#6ee7b7" },
+              { label: "Fillers", value: speechDataArr[currentIndex]?.fillerCount ?? 0, color: "#fbbf24" },
+              { label: "Confidence", value: `${speechDataArr[currentIndex]?.confidenceScore ?? 0}%`, color: "#f472b6" },
+            ].map(({ label, value, color }) => (
+              <span
+                key={label}
+                style={{
+                  padding: "0.3rem 0.75rem",
+                  borderRadius: "999px",
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(148,163,184,0.15)",
+                  fontSize: "0.8rem",
+                  color: "#94a3b8",
+                }}
+              >
+                {label}: <strong style={{ color }}>{value}</strong>
+              </span>
+            ))}
+          </div>
         )}
       </div>
 

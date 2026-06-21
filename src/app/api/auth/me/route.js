@@ -2,6 +2,8 @@ import { connectMongo } from "@/lib/mongodb";
 import User from "@/models/User";
 import { verifyToken } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 function getToken(request) {
   const cookie = request.headers.get("cookie") || "";
   const match = cookie.match(/(?:^|; )token=([^;]+)/);
@@ -17,7 +19,7 @@ export async function GET(request) {
   try {
     const payload = verifyToken(token);
     await connectMongo();
-    const user = await User.findById(payload.userId).select("fullName email role");
+    const user = await User.findById(payload.userId).select("fullName email role isBlocked");
     if (!user) {
       return new Response(JSON.stringify({ success: false, message: "User not found" }), { status: 404 });
     }
@@ -31,9 +33,16 @@ export async function GET(request) {
           name: user.fullName,
           email: user.email,
           role: user.role,
+          isBlocked: !!user.isBlocked,
         },
       }),
-      { status: 200 }
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, max-age=0",
+        },
+      }
     );
   } catch (error) {
     return new Response(JSON.stringify({ success: false, message: "Invalid token" }), { status: 401 });
