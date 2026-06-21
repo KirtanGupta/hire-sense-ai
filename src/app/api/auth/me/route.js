@@ -19,7 +19,7 @@ export async function GET(request) {
   try {
     const payload = verifyToken(token);
     await connectMongo();
-    const user = await User.findById(payload.userId).select("fullName email role isBlocked");
+    const user = await User.findById(payload.userId).select("fullName email role isBlocked profilePicture");
     if (!user) {
       return new Response(JSON.stringify({ success: false, message: "User not found" }), { status: 404 });
     }
@@ -34,6 +34,7 @@ export async function GET(request) {
           email: user.email,
           role: user.role,
           isBlocked: !!user.isBlocked,
+          profilePicture: user.profilePicture || "",
         },
       }),
       {

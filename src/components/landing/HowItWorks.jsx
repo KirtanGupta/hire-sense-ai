@@ -81,7 +81,7 @@ export default function HowItWorks() {
           <div
             style={{
               position: "absolute",
-              top: "70px",
+              top: "42px",
               left: "calc(12.5% + 28px)",
               right: "calc(12.5% + 28px)",
               height: 2,
@@ -114,7 +114,7 @@ export default function HowItWorks() {
                     width: 80,
                     height: 80,
                     borderRadius: "50%",
-                    background: `linear-gradient(135deg, ${step.color}20, ${step.color}08)`,
+                    background: `linear-gradient(135deg, ${step.color}20, ${step.color}08), #050816`,
                     border: `2px solid ${step.color}50`,
                     display: "flex",
                     alignItems: "center",

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { RiBrainLine } from "react-icons/ri";
 import api from "@/services/api";
 import { useRouter } from "next/navigation";
+import Navbar from "@/components/landing/Navbar";
 
 export default function RegisterForm() {
   const router = useRouter();
@@ -41,18 +42,20 @@ export default function RegisterForm() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg-primary)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "2rem",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
+    <>
+      <Navbar />
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "var(--bg-primary)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "6rem 2rem 2rem",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
       <div
         style={{
           position: "absolute",
@@ -192,6 +195,7 @@ export default function RegisterForm() {
           </Link>
         </p>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

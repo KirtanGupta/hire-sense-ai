@@ -209,6 +209,45 @@ export default function ResumeUploader() {
     }
   }
 
+  async function handleDeleteResume(resumeId) {
+    if (!window.confirm("Are you sure you want to delete this resume? This will permanently delete the parsed resume details and the file from our servers.")) {
+      return;
+    }
+    
+    try {
+      const res = await api.delete(`/api/resume?id=${resumeId}`);
+      if (res.data.success) {
+        toast.success("✅ Resume deleted successfully!");
+        setResumes((current) => current.filter((r) => r._id !== resumeId));
+        
+        // Re-load skills and analysis to update the dashboard display
+        const [skillsRes, analysisRes] = await Promise.all([
+          api.get("/api/resume/skills"),
+          api.get("/api/resume/analysis"),
+        ]);
+        
+        if (skillsRes.data.success) {
+          setSkills(skillsRes.data.skills || []);
+          setSkillCategories(skillsRes.data.skillCategories || emptySkillCategories);
+        } else {
+          setSkills([]);
+          setSkillCategories(emptySkillCategories);
+        }
+        
+        if (analysisRes.data.success) {
+          setAnalysis(analysisRes.data.analysis || null);
+        } else {
+          setAnalysis(null);
+        }
+      } else {
+        toast.error(res.data.message || "Failed to delete resume.");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("❌ Failed to delete resume due to a network error.");
+    }
+  }
+
   const uploading = uploadStage !== null && uploadStage !== "done";
 
   return (
@@ -383,7 +422,31 @@ export default function ResumeUploader() {
               <div key={resume._id} style={{ padding: "1rem", borderRadius: "1rem", background: "rgba(148,163,184,0.06)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
                   <p style={{ color: "#f8fafc", margin: 0, fontWeight: 500 }}>{resume.fileName}</p>
-                  <span style={{ color: "#94a3b8", fontSize: "0.85rem" }}>{new Date(resume.uploadedAt).toLocaleDateString()}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                    <span style={{ color: "#94a3b8", fontSize: "0.85rem" }}>{new Date(resume.uploadedAt).toLocaleDateString()}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteResume(resume._id)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "#ef4444",
+                        fontSize: "1.1rem",
+                        cursor: "pointer",
+                        padding: "0.2rem",
+                        borderRadius: "0.35rem",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        transition: "all 0.2s",
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.15)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                      title="Delete Resume"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
                   {(resume.skillCategories?.languages?.length ||

@@ -99,7 +99,7 @@ export default function AdminAnalyticsPage() {
   }, []);
 
   useEffect(() => {
-    fetchAnalytics();
+    Promise.resolve().then(() => fetchAnalytics());
   }, [fetchAnalytics]);
 
   // ── Export to Excel ─────────────────────────────────────────────────────────

@@ -54,7 +54,7 @@ function getScoreColor(score) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function AvatarRing({ name, size = 96 }) {
+function AvatarRing({ name, image, size = 96 }) {
   const initials = getInitials(name);
   const colors = [
     ["#6366f1", "#8b5cf6"],
@@ -88,7 +88,7 @@ function AvatarRing({ name, size = 96 }) {
         position: "absolute",
         inset: 3,
         borderRadius: "50%",
-        background: `linear-gradient(135deg, ${pair[0]}, ${pair[1]})`,
+        background: image ? "transparent" : `linear-gradient(135deg, ${pair[0]}, ${pair[1]})`,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -99,8 +99,28 @@ function AvatarRing({ name, size = 96 }) {
         fontFamily: "var(--font-space-grotesk, sans-serif)",
         zIndex: 2,
         boxShadow: `0 8px 32px ${pair[0]}55`,
+        overflow: "hidden",
       }}>
-        {initials}
+        {image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={image}
+            alt={name}
+            onError={e => {
+              e.target.style.display = "none";
+              e.target.nextSibling.style.display = "flex";
+            }}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : null}
+        <div style={{
+          width: "100%", height: "100%",
+          background: `linear-gradient(135deg, ${pair[0]}, ${pair[1]})`,
+          display: image ? "none" : "flex",
+          alignItems: "center", justifyContent: "center",
+        }}>
+          {initials}
+        </div>
       </div>
       <style>{`
         @keyframes spinSlow {
@@ -250,12 +270,12 @@ export default function ProfilePageClient() {
         if (res.data.success) setUser(res.data.user);
       } catch { setUser(null); }
     }
-    if (!user) fetchUser();
-  }, [user, setUser]);
+    fetchUser();
+  }, [setUser]);
 
   // ── Sync name input ──
   useEffect(() => {
-    setNameValue(user?.fullName || "");
+    Promise.resolve().then(() => setNameValue(user?.fullName || ""));
   }, [user]);
 
   // ── Focus name input when editing ──
@@ -373,7 +393,7 @@ export default function ProfilePageClient() {
 
         <div className="profile-hero-inner">
           {/* Avatar */}
-          <AvatarRing name={user?.fullName || "U"} size={100} />
+          <AvatarRing name={user?.fullName || "U"} image={user?.profilePicture} size={100} />
 
           {/* Name + meta */}
           <div style={{ flex: 1 }}>
