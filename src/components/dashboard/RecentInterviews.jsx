@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/services/api";
+import { SkeletonBlock } from "@/components/ui/LoadingStates";
 
 const modeLabels = {
   voice: { icon: "🎤", color: "#f472b6" },
@@ -55,9 +56,26 @@ export default function RecentInterviews() {
       </div>
 
       {loading ? (
-        <p style={{ color: "#94a3b8", fontSize: "0.9rem" }}>Loading...</p>
+        <div style={{ display: "grid", gap: "0.75rem" }}>
+          {[...Array(3)].map((_, i) => (
+            <div key={i} style={{ padding: "1rem 1.25rem", borderRadius: "1rem", background: "rgba(148,163,184,0.06)", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+              <SkeletonBlock width="55%" height={14} delay={i * 0.1} />
+              <SkeletonBlock width="35%" height={11} delay={i * 0.1 + 0.08} />
+            </div>
+          ))}
+        </div>
       ) : interviews.length === 0 ? (
-        <p style={{ color: "#94a3b8", fontSize: "0.9rem" }}>No interviews yet. Start your first one!</p>
+        <div style={{ textAlign: "center", padding: "2rem 1rem" }}>
+          <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>🎙️</div>
+          <p style={{ color: "#94a3b8", fontWeight: 500, margin: "0 0 0.5rem" }}>No Interviews Yet</p>
+          <p style={{ color: "#64748b", fontSize: "0.85rem", margin: "0 0 1.25rem" }}>Start your first AI mock interview to see it here.</p>
+          <button
+            onClick={() => router.push("/interview")}
+            style={{ padding: "0.7rem 1.5rem", borderRadius: "0.75rem", border: "none", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: "0.9rem" }}
+          >
+            🚀 Start Interview
+          </button>
+        </div>
       ) : (
         <div style={{ display: "grid", gap: "0.75rem" }}>
           {interviews.map((item) => {

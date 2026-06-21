@@ -3,8 +3,16 @@ import path from "path";
 import { connectMongo } from "@/lib/mongodb";
 import Resume from "@/models/Resume";
 import { verifyToken } from "@/lib/auth";
-import { extractPDFText, extractDOCXText, normalizeText } from "@/services/resumeParser";
+import {
+  extractPDFText,
+  extractDOCXText,
+  normalizeText,
+  isPDFBuffer,
+  isDOCXBuffer,
+} from "@/services/resumeParser";
 import { evaluateResume, evaluateResumeLocally } from "@/services/llmService";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getToken(request) {
   const cookie = request.headers.get("cookie") || "";
@@ -22,26 +30,29 @@ function getLlmProviderName() {
 
 function getLlmErrorMessage(error) {
   const provider = getLlmProviderName();
-
   if (error?.status === 404 || error?.message?.includes("not found")) {
     return `${provider} model was not found. Check your model name in .env.local.`;
   }
-
   if (error?.status === 429 || error?.message?.includes("quota")) {
     return `${provider} quota or rate limit was reached. Try again later or use another API key/model.`;
   }
-
   return `Resume text was extracted, but ${provider} analysis failed. Please check your API key/model configuration and try again.`;
 }
 
 function isLlmQuotaError(error) {
-  return error?.status === 429 || error?.message?.toLowerCase().includes("quota");
+  return (
+    error?.status === 429 ||
+    error?.message?.toLowerCase().includes("quota") ||
+    error?.message?.toLowerCase().includes("rate limit")
+  );
 }
+
+// ─── POST /api/resume/upload ──────────────────────────────────────────────────
 
 export async function POST(request) {
   const token = getToken(request);
   if (!token) {
-    return new Response(JSON.stringify({ success: false, message: "Not authenticated" }), { status: 401 });
+    return jsonResponse({ success: false, message: "Not authenticated." }, 401);
   }
 
   try {
@@ -49,27 +60,68 @@ export async function POST(request) {
     const formData = await request.formData();
     const file = formData.get("resume");
 
+    // ── Validate file present ──
     if (!file || typeof file === "string") {
-      return new Response(JSON.stringify({ success: false, message: "Resume file is required." }), { status: 400 });
+      return jsonResponse({ success: false, message: "Resume file is required." }, 400);
     }
 
-    const fileName = file.name;
-    const allowedExtensions = [".pdf", ".docx"];
-    const hasValidExtension = allowedExtensions.some((ext) => fileName.toLowerCase().endsWith(ext));
-    if (!hasValidExtension) {
-      return new Response(JSON.stringify({ success: false, message: "Unsupported file type" }), { status: 400 });
+    const fileName = file.name || "resume";
+    const lowerName = fileName.toLowerCase();
+
+    // ── Validate extension ──
+    const isPDF  = lowerName.endsWith(".pdf");
+    const isDOCX = lowerName.endsWith(".docx");
+
+    if (!isPDF && !isDOCX) {
+      return jsonResponse(
+        {
+          success: false,
+          message: "Unsupported file type. Please upload a PDF or DOCX file.",
+        },
+        400
+      );
     }
 
+    // ── Read file buffer ──
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    if (buffer.length === 0) {
+      return jsonResponse({ success: false, message: "The uploaded file is empty." }, 400);
+    }
+
+    // ── Validate magic bytes (actual file type, not just extension) ──
+    if (isPDF && !isPDFBuffer(buffer)) {
+      return jsonResponse(
+        {
+          success: false,
+          message:
+            "The file does not appear to be a valid PDF. Please make sure the file is not corrupted and try again.",
+        },
+        400
+      );
+    }
+
+    if (isDOCX && !isDOCXBuffer(buffer)) {
+      return jsonResponse(
+        {
+          success: false,
+          message:
+            "The file does not appear to be a valid DOCX. Please make sure the file is not corrupted and try again.",
+        },
+        400
+      );
+    }
+
+    // ── Save file to disk ──
     const uploadDir = path.join(process.cwd(), "public", "uploads");
     await fs.mkdir(uploadDir, { recursive: true });
-
     const safeName = `${Date.now()}-${sanitizeFileName(fileName)}`;
     const filePath = path.join(uploadDir, safeName);
     await fs.writeFile(filePath, buffer);
 
+    // ── Extract text ──
     let extractedText = "";
-    if (fileName.toLowerCase().endsWith(".pdf")) {
+    if (isPDF) {
       extractedText = await extractPDFText(buffer);
     } else {
       extractedText = await extractDOCXText(buffer);
@@ -77,16 +129,25 @@ export async function POST(request) {
 
     const normalizedText = normalizeText(extractedText);
 
-    if (!normalizedText) {
-      return new Response(
-        JSON.stringify({
+    // ── Guard: empty text ──
+    if (!normalizedText || normalizedText.length < 30) {
+      // Clean up saved file so it doesn't orphan
+      await fs.unlink(filePath).catch(() => {});
+
+      const hint = isPDF
+        ? "Make sure your PDF contains selectable text (not a scanned image). If it is a scanned resume, please convert it to a text-based PDF or use a DOCX file instead."
+        : "The DOCX file appears to contain no readable text. Please check the file and try again.";
+
+      return jsonResponse(
+        {
           success: false,
-          message: "Could not read text from this resume. Please upload a text-based PDF or DOCX file.",
-        }),
-        { status: 422 }
+          message: `Could not extract text from your ${isPDF ? "PDF" : "DOCX"}. ${hint}`,
+        },
+        422
       );
     }
 
+    // ── LLM Analysis ──
     let extractedSkills = [];
     let skillCategories = {
       languages: [],
@@ -109,29 +170,24 @@ export async function POST(request) {
     try {
       const evaluation = await evaluateResume(normalizedText);
       extractedSkills = evaluation.skills;
-      skillCategories = evaluation.skillCategories;
-      scoreBreakdown = evaluation.scoreBreakdown;
-      recommendedRole = evaluation.recommendedRole;
-      analysis = evaluation;
+      skillCategories  = evaluation.skillCategories;
+      scoreBreakdown   = evaluation.scoreBreakdown;
+      recommendedRole  = evaluation.recommendedRole;
+      analysis         = evaluation;
     } catch (llmError) {
-      console.error(`${getLlmProviderName()} analysis failed:`, llmError);
+      console.error(`[upload] ${getLlmProviderName()} analysis failed:`, llmError?.message);
 
       if (isLlmQuotaError(llmError)) {
+        // Graceful fallback to local evaluator
         const evaluation = evaluateResumeLocally(normalizedText);
         extractedSkills = evaluation.skills;
-        skillCategories = evaluation.skillCategories;
-        scoreBreakdown = evaluation.scoreBreakdown;
-        recommendedRole = evaluation.recommendedRole;
-        analysis = evaluation;
+        skillCategories  = evaluation.skillCategories;
+        scoreBreakdown   = evaluation.scoreBreakdown;
+        recommendedRole  = evaluation.recommendedRole;
+        analysis         = evaluation;
         usedLocalFallback = true;
       } else {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            message: getLlmErrorMessage(llmError),
-          }),
-          { status: 502 }
-        );
+        return jsonResponse({ success: false, message: getLlmErrorMessage(llmError) }, 502);
       }
     }
 
@@ -142,40 +198,49 @@ export async function POST(request) {
       ];
     }
 
-    try {
-      await connectMongo();
-      const resume = await Resume.create({
-        userId: payload.userId,
-        fileName,
-        fileUrl: `/uploads/${encodeURIComponent(safeName)}`,
-        extractedText: normalizedText,
-        extractedSkills,
-        skillCategories,
-        recommendedRole,
-        analysisScore: analysis.score,
-        scoreBreakdown,
-        analysisSummary: {
-          strengths: analysis.strengths,
-          weaknesses: analysis.weaknesses,
-          suggestions: analysis.suggestions,
-        },
-      });
+    // ── Save to MongoDB ──
+    await connectMongo();
+    const resume = await Resume.create({
+      userId:        payload.userId,
+      fileName,
+      fileUrl:       `/uploads/${encodeURIComponent(safeName)}`,
+      extractedText: normalizedText,
+      extractedSkills,
+      skillCategories,
+      recommendedRole,
+      analysisScore:  analysis.score,
+      scoreBreakdown,
+      analysisSummary: {
+        strengths:   analysis.strengths,
+        weaknesses:  analysis.weaknesses,
+        suggestions: analysis.suggestions,
+      },
+    });
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          resume,
-          message: usedLocalFallback
-            ? `Resume analyzed with local fallback because ${getLlmProviderName()} quota or rate limit was reached.`
-            : "Resume uploaded and analyzed successfully.",
-        }),
-        { status: 201 }
-      );
-    } catch (dbError) {
-      throw dbError;
-    }
+    return jsonResponse(
+      {
+        success: true,
+        resume,
+        message: usedLocalFallback
+          ? `Resume analyzed with local fallback because ${getLlmProviderName()} quota or rate limit was reached.`
+          : "Resume uploaded and analyzed successfully.",
+      },
+      201
+    );
   } catch (error) {
-    console.error(error);
-    return new Response(JSON.stringify({ success: false, message: "Unable to upload resume." }), { status: 500 });
+    console.error("[upload] Unhandled error:", error?.message);
+    return jsonResponse(
+      { success: false, message: "Resume upload failed. Please try again." },
+      500
+    );
   }
+}
+
+// ─── Utility ──────────────────────────────────────────────────────────────────
+
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }

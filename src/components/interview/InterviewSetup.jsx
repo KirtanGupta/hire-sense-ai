@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import useAuthStore from "@/store/authStore";
+import toast from "react-hot-toast";
+import { GeneratingLoader } from "@/components/ui/LoadingStates";
 
 const BASE_ROLES = [
   "MERN Developer",
@@ -70,6 +72,7 @@ export default function InterviewSetup() {
 
   async function handleGenerate() {
     if (!role) {
+      toast.error("Please select a role to continue.");
       setError("Please select a role to continue.");
       return;
     }
@@ -84,12 +87,17 @@ export default function InterviewSetup() {
       });
       const data = await res.json();
       if (data.success) {
+        toast.success("✅ Interview generated! Starting session...");
         router.push(`/interview/session/${data.sessionId}`);
       } else {
-        setError(data.message || "Your account has been blocked. You cannot start interviews.");
+        const msg = data.message || "Your account has been blocked. You cannot start interviews.";
+        setError(msg);
+        toast.error(`❌ ${msg}`);
       }
     } catch {
-      setError("Network error. Please try again.");
+      const msg = "Network error. Please try again.";
+      setError(msg);
+      toast.error(`❌ ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -370,6 +378,13 @@ export default function InterviewSetup() {
         >
           ⚡ Generate Interview
         </button>
+      )}
+
+      {/* ── Generating Loader (shows while AI generates questions) ── */}
+      {loading && (
+        <div style={{ animation: "fadeIn 0.3s ease" }}>
+          <GeneratingLoader stage="generate" />
+        </div>
       )}
 
       {error && (

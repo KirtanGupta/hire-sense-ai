@@ -25,7 +25,7 @@ export async function GET(request) {
     }
     const sessions = await InterviewSession.find({ userId: payload.userId })
       .sort({ createdAt: -1 })
-      .select("role difficulty experience status totalQuestions createdAt")
+      .select("role difficulty experience status totalQuestions createdAt overallScore technicalScore confidenceScore interviewMode voiceScore")
       .lean();
 
     return new Response(JSON.stringify({ success: true, interviews: sessions }), { status: 200 });

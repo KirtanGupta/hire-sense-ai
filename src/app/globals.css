@@ -436,3 +436,83 @@ textarea.input {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ─── Phase 9.5 — Responsive Design ─────────────────────────── */
+
+/* Dashboard grid cards */
+@media (max-width: 900px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .stat-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Interview setup step grid */
+@media (max-width: 700px) {
+  .interview-setup-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Admin panel tables — horizontal scroll on mobile */
+@media (max-width: 768px) {
+  .admin-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-table-wrapper table {
+    min-width: 640px;
+  }
+}
+
+/* Resume analysis 2-col grid */
+@media (max-width: 640px) {
+  .analysis-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .skill-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Topbar responsive */
+@media (max-width: 768px) {
+  .topbar-title {
+    font-size: 1.3rem !important;
+  }
+  .topbar-actions {
+    gap: 0.5rem !important;
+  }
+  .topbar-actions a,
+  .topbar-actions button {
+    padding: 0.55rem 0.85rem !important;
+    font-size: 0.82rem !important;
+  }
+}
+
+/* Phase 9.6 — Skeleton shimmer global */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Smooth page transitions */
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter {
+  animation: pageIn 0.4s ease forwards;
+}
+
+/* Toast override improvements */
+.react-hot-toast {
+  font-family: var(--font-inter), system-ui, sans-serif !important;
+}

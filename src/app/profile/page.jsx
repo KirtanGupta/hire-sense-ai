@@ -3,11 +3,12 @@ import ProfilePageClient from "@/components/profile/ProfilePageClient";
 
 export const metadata = {
   title: "Profile — HireSense AI",
+  description: "View and manage your HireSense AI profile, interview stats, and account settings.",
 };
 
 export default function ProfilePage() {
   return (
-    <DashboardShell title="Profile" subtitle="Manage your profile information all in one place.">
+    <DashboardShell>
       <ProfilePageClient />
     </DashboardShell>
   );
