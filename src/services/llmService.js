@@ -1,11 +1,24 @@
 function parseJSONSafe(text) {
+  if (!text) return {};
   try {
     return JSON.parse(text);
   } catch (error) {
-    const cleaned = text.replace(/^[^\{\[]+/, "").replace(/[^\}\]]+$/, "");
+    // Strip markdown code fences (```json ... ``` or ``` ... ```)
+    let cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+    // Strip any leading/trailing non-JSON characters
+    cleaned = cleaned.replace(/^[^\{\[]+/, "").replace(/[^\}\]]+$/, "");
     try {
       return JSON.parse(cleaned);
     } catch (innerError) {
+      // Try extracting the first JSON object from the text
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          return JSON.parse(match[0]);
+        } catch {
+          return {};
+        }
+      }
       return {};
     }
   }
@@ -95,8 +108,15 @@ function normalizeEvaluation(parsed) {
 }
 
 function getEvaluationPrompt(resumeText) {
-  return `You are an ATS resume reviewer. Extract technical skills and evaluate this resume.
-Return only JSON in this exact shape:
+  return `You are an expert ATS resume reviewer. Carefully read the resume below and return a JSON evaluation.
+
+RULES:
+- Extract ALL technical skills (languages, frameworks, databases, tools) and ALL soft skills found in the resume.
+- Score the resume honestly out of 100 based on actual content. Do NOT return zeros unless the section is completely absent.
+- scoreBreakdown scores MUST add up exactly to the total score.
+- Return ONLY valid JSON, no markdown, no explanation.
+
+JSON shape to follow (use real values, not these examples):
 {
   "recommendedRole": "MERN Stack Developer",
   "skillCategories": {
@@ -104,21 +124,23 @@ Return only JSON in this exact shape:
     "frameworks": ["React", "Express"],
     "databases": ["MongoDB", "MySQL"],
     "tools": ["Git", "GitHub", "VS Code"],
-    "softSkills": ["Communication", "Problem Solving"]
+    "softSkills": ["Communication", "Problem Solving", "Team Collaboration"]
   },
-  "score": 0,
+  "score": 72,
   "scoreBreakdown": {
-    "technicalSkills": { "score": 0, "max": 40 },
-    "projects": { "score": 0, "max": 25 },
-    "education": { "score": 0, "max": 15 },
-    "certifications": { "score": 0, "max": 10 },
-    "resumeStructure": { "score": 0, "max": 10 }
+    "technicalSkills": { "score": 28, "max": 40 },
+    "projects": { "score": 20, "max": 25 },
+    "education": { "score": 12, "max": 15 },
+    "certifications": { "score": 5, "max": 10 },
+    "resumeStructure": { "score": 7, "max": 10 }
   },
-  "strengths": ["..."],
-  "weaknesses": ["..."],
-  "suggestions": ["..."]
+  "strengths": ["Strong technical stack", "Good project experience"],
+  "weaknesses": ["No certifications listed", "Could improve structure"],
+  "suggestions": ["Add certifications", "Quantify achievements with numbers"]
 }
-Use scoreBreakdown scores that add up to the total score out of 100. Separate technical skills from soft skills. Recommend the single best-fit role. Resume: ${resumeText}`;
+
+Resume to evaluate:
+${resumeText}`;
 }
 
 async function evaluateWithGemini(resumeText) {
@@ -132,12 +154,17 @@ async function evaluateWithGemini(resumeText) {
     ],
     generationConfig: {
       responseMimeType: "application/json",
-      maxOutputTokens: 700,
-      temperature: 0.25,
+      maxOutputTokens: 1500,
+      temperature: 0.2,
     },
   });
 
-  return normalizeEvaluation(parseJSONSafe(response.response.text()));
+  const rawText = response.response.text();
+  const parsed = parseJSONSafe(rawText);
+  if (!parsed || Object.keys(parsed).length === 0) {
+    throw new Error("Gemini returned an empty or unparseable response");
+  }
+  return normalizeEvaluation(parsed);
 }
 
 async function evaluateWithGroq(resumeText) {
@@ -157,7 +184,7 @@ async function evaluateWithGroq(resumeText) {
       messages: [
         {
           role: "system",
-          content: "You are a strict ATS resume evaluator. Return valid JSON only.",
+          content: "You are an expert ATS resume evaluator. You MUST return valid JSON only — no markdown, no explanation. Fill in real scores based on the resume content. Never return zero scores unless a section is completely missing.",
         },
         {
           role: "user",
@@ -165,8 +192,8 @@ async function evaluateWithGroq(resumeText) {
         },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.25,
-      max_completion_tokens: 700,
+      temperature: 0.2,
+      max_completion_tokens: 1500,
     }),
   });
 
@@ -179,7 +206,12 @@ async function evaluateWithGroq(resumeText) {
     throw error;
   }
 
-  return normalizeEvaluation(parseJSONSafe(data?.choices?.[0]?.message?.content || "{}"));
+  const content = data?.choices?.[0]?.message?.content || "{}";
+  const parsed = parseJSONSafe(content);
+  if (!parsed || Object.keys(parsed).length === 0) {
+    throw new Error("Groq returned an empty or unparseable response");
+  }
+  return normalizeEvaluation(parsed);
 }
 
 const SKILL_CATALOG = {
@@ -325,4 +357,199 @@ export async function evaluateResume(resumeText) {
   }
 
   return evaluateWithGroq(resumeText);
+}
+
+// ─── Interview Question Generation ────────────────────────────────────────────
+
+function getQuestionPrompt({ role, difficulty, experience, skills, questionCount }) {
+  const skillList = skills.length > 0 ? skills.join(", ") : "General software development";
+  return `You are a senior technical interviewer. Generate exactly ${questionCount} interview questions.
+
+Role: ${role}
+Difficulty: ${difficulty}
+Experience Level: ${experience}
+Candidate Skills: ${skillList}
+
+Rules:
+1. Questions MUST be technical and relevant to the role and skills listed.
+2. Match difficulty: Easy = conceptual, Medium = applied, Hard = architecture/advanced.
+3. Mix question types: definitions, scenario-based, comparison, best-practice.
+4. Each question should be standalone and specific (not vague).
+5. Return ONLY valid JSON, no markdown, no explanation.
+
+Return this exact JSON shape:
+{
+  "questions": [
+    "What is the Virtual DOM and why does React use it?",
+    "Explain the difference between useEffect and useLayoutEffect."
+  ]
+}`;
+}
+
+const FALLBACK_QUESTIONS = {
+  "MERN Developer": [
+    "What is the Virtual DOM and how does React use it?",
+    "Explain the difference between useState and useReducer in React.",
+    "How does Express.js handle middleware?",
+    "What are Mongoose schemas and models?",
+    "Explain the event loop in Node.js.",
+    "What is JWT and how is it used for authentication?",
+    "How does MongoDB differ from a relational database like MySQL?",
+    "What is CORS and how do you handle it in Express?",
+    "Explain React's component lifecycle.",
+    "What are environment variables and why should you use them?",
+    "What is REST API and what are its constraints?",
+    "How do you handle asynchronous operations in JavaScript?",
+    "Explain the concept of promises and async/await.",
+    "What are React hooks? Name and describe five common ones.",
+    "How does MongoDB indexing improve query performance?",
+  ],
+  "Frontend Developer": [
+    "What is the difference between CSS Flexbox and CSS Grid?",
+    "How does the browser render a webpage?",
+    "What is the difference between var, let, and const in JavaScript?",
+    "Explain how event delegation works in JavaScript.",
+    "What are Web APIs and give three examples.",
+    "What is responsive design and how do you implement it?",
+    "Explain the box model in CSS.",
+    "What is a closure in JavaScript?",
+    "How does React's reconciliation algorithm work?",
+    "What is lazy loading and why is it useful?",
+    "Explain the difference between synchronous and asynchronous JavaScript.",
+    "What are CSS custom properties (variables)?",
+    "How do you optimize a web page for performance?",
+    "What is the purpose of semantic HTML?",
+    "Explain cross-browser compatibility issues and how to solve them.",
+  ],
+  "Backend Developer": [
+    "What is RESTful API design and its key principles?",
+    "Explain database normalization and its forms.",
+    "What is the difference between SQL and NoSQL databases?",
+    "How do you handle database transactions?",
+    "What is caching and how do you implement it?",
+    "Explain microservices architecture.",
+    "What is an ORM and why use one?",
+    "How does authentication differ from authorization?",
+    "What are HTTP status codes and name five important ones?",
+    "Explain database indexing and when to use it.",
+    "What is a message queue and when would you use one?",
+    "How do you secure an API endpoint?",
+    "What is connection pooling?",
+    "Explain the SOLID principles.",
+    "What is Docker and why is it useful for backend development?",
+  ],
+  "Python Developer": [
+    "What are Python decorators and how do they work?",
+    "Explain the difference between lists and tuples in Python.",
+    "What is a generator in Python?",
+    "How does Python's garbage collection work?",
+    "What is the GIL (Global Interpreter Lock)?",
+    "Explain list comprehensions vs generator expressions.",
+    "What is the difference between deepcopy and shallowcopy?",
+    "How do you handle exceptions in Python?",
+    "What is the purpose of __init__ and __str__ methods?",
+    "Explain Python's context managers (with statement).",
+    "What is the difference between *args and **kwargs?",
+    "How does Python manage memory?",
+    "What are Python virtual environments and why use them?",
+    "Explain the difference between == and is in Python.",
+    "What is duck typing in Python?",
+  ],
+  default: [
+    "Explain object-oriented programming and its four pillars.",
+    "What is the difference between a stack and a queue?",
+    "How does version control work and why is it important?",
+    "What is an algorithm and how do you evaluate its efficiency?",
+    "Explain the concept of recursion with an example.",
+    "What is the difference between compiled and interpreted languages?",
+    "How does HTTP work at a high level?",
+    "What are design patterns and name three common ones?",
+    "Explain the concept of concurrency vs parallelism.",
+    "What is a database index and when should you use one?",
+    "What is the MVC (Model-View-Controller) pattern?",
+    "How do you approach debugging a complex bug?",
+    "Explain what an API is and how it's used.",
+    "What is the difference between synchronous and asynchronous programming?",
+    "How do you ensure code quality in a team environment?",
+  ],
+};
+
+function getFallbackQuestions(role, questionCount) {
+  const bank =
+    FALLBACK_QUESTIONS[role] ||
+    FALLBACK_QUESTIONS["MERN Developer"] ||
+    FALLBACK_QUESTIONS.default;
+  // Shuffle for variety
+  const shuffled = [...bank].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, Math.min(questionCount, shuffled.length));
+}
+
+async function generateQuestionsWithGroq(params) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error("GROQ_API_KEY is not defined in .env.local");
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a senior technical interviewer. Return ONLY valid JSON with a 'questions' array of strings. No markdown, no explanation.",
+        },
+        { role: "user", content: getQuestionPrompt(params) },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.7,
+      max_completion_tokens: 1200,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const msg = data?.error?.message || `Groq request failed with status ${response.status}`;
+    const err = new Error(msg);
+    err.status = response.status;
+    throw err;
+  }
+
+  const content = data?.choices?.[0]?.message?.content || "{}";
+  const parsed = parseJSONSafe(content);
+  const questions = Array.isArray(parsed?.questions) ? parsed.questions.map(String).filter(Boolean) : [];
+  if (questions.length === 0) throw new Error("Groq returned no questions");
+  return questions.slice(0, params.questionCount);
+}
+
+async function generateQuestionsWithGemini(params) {
+  const { model } = await import("@/lib/gemini");
+  const response = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: getQuestionPrompt(params) }] }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      maxOutputTokens: 1200,
+      temperature: 0.7,
+    },
+  });
+
+  const parsed = parseJSONSafe(response.response.text());
+  const questions = Array.isArray(parsed?.questions) ? parsed.questions.map(String).filter(Boolean) : [];
+  if (questions.length === 0) throw new Error("Gemini returned no questions");
+  return questions.slice(0, params.questionCount);
+}
+
+export async function generateInterviewQuestions(params) {
+  try {
+    if (process.env.LLM_PROVIDER === "gemini") {
+      return await generateQuestionsWithGemini(params);
+    }
+    return await generateQuestionsWithGroq(params);
+  } catch (error) {
+    console.error("LLM question generation failed, using fallback:", error.message);
+    return getFallbackQuestions(params.role, params.questionCount);
+  }
 }

@@ -1,5 +1,5 @@
 import { connectMongo } from "@/lib/mongodb";
-import Interview from "@/models/Interview";
+import InterviewSession from "@/models/InterviewSession";
 import { verifyToken } from "@/lib/auth";
 
 function getToken(request) {
@@ -17,9 +17,14 @@ export async function GET(request) {
   try {
     const payload = verifyToken(token);
     await connectMongo();
-    const interviews = await Interview.find({ userId: payload.userId }).sort({ interviewDate: -1 }).lean();
-    return new Response(JSON.stringify({ success: true, interviews }), { status: 200 });
+    const sessions = await InterviewSession.find({ userId: payload.userId })
+      .sort({ createdAt: -1 })
+      .select("role difficulty experience status totalQuestions createdAt")
+      .lean();
+
+    return new Response(JSON.stringify({ success: true, interviews: sessions }), { status: 200 });
   } catch (error) {
+    console.error("history route error:", error);
     return new Response(JSON.stringify({ success: false, message: "Unable to load history" }), { status: 400 });
   }
 }
