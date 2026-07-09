@@ -20,10 +20,19 @@ export async function connectMongo() {
   if (!cached.promise) {
     cached.promise = mongoose.connect(MONGODB_URI, {
       bufferCommands: false,
+      serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds instead of hanging infinitely
     });
   }
 
-  cached.conn = await cached.promise;
-  console.log("MongoDB Connected");
-  return cached.conn;
+  try {
+    cached.conn = await cached.promise;
+    console.log("MongoDB Connected");
+    return cached.conn;
+  } catch (error) {
+    cached.promise = null; // Clear cached promise on failure to allow retries
+    throw new Error(
+      `MongoDB connection failed: ${error.message}. Please check that: 1) Your MONGODB_URI in .env.local is correct, 2) Your Atlas database cluster is resumed (not paused), and 3) Your current IP address is whitelisted in MongoDB Atlas Network Access.`
+    );
+  }
 }
+
