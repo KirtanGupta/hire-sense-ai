@@ -98,7 +98,7 @@ export default function VoiceInterviewSection() {
             </h2>
             <p style={{ color: "#64748b", fontSize: "1.05rem", lineHeight: 1.75, marginBottom: "2rem" }}>
               Use the Web Speech API to answer questions hands-free. Your speech is converted to
-              text, sent for AI evaluation, and you receive instant feedback — just like a
+              text, sent to Gemini for evaluation, and you receive instant feedback — just like a
               live interview.
             </p>
             <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "2rem" }}>

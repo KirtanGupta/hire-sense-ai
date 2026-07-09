@@ -21,7 +21,7 @@ export const metadata = {
     "resume analysis",
     "voice interview",
     "job preparation",
-    "Groq AI",
+    "Gemini AI",
     "interview practice",
   ],
 };

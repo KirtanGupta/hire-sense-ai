@@ -31,7 +31,7 @@ export default function ResumeSection() {
               <span className="text-gradient">Practice Smarter</span>
             </h2>
             <p style={{ color: "#64748b", fontSize: "1.05rem", lineHeight: 1.75, marginBottom: "2rem" }}>
-              Upload your PDF or DOCX resume and let AI extract your skills automatically.
+              Upload your PDF or DOCX resume and let Gemini extract your skills automatically.
               Interview questions are tailored to your experience — no generic question banks.
             </p>
             <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "2rem" }}>
@@ -94,7 +94,7 @@ export default function ResumeSection() {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", color: "#94a3b8", fontSize: "0.85rem" }}>
                 <FiCpu size={16} color="#8b5cf6" />
-                Groq AI skill extraction
+                Gemini AI skill extraction
               </div>
             </div>
 

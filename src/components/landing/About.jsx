@@ -20,7 +20,7 @@ const highlights = [
     icon: <FiZap size={24} />,
     title: "What We Offer",
     description:
-      "Resume parsing, role-based questions, voice interviews, scoring, and detailed reports — all powered by Groq AI.",
+      "Resume parsing, role-based questions, voice interviews, scoring, and detailed reports — all powered by Gemini AI.",
     color: "#06b6d4",
   },
 ];
@@ -59,7 +59,7 @@ export default function About() {
             }}
           >
             HireSense AI is an interview preparation platform that combines modern web
-            technology with Groq-powered AI to simulate realistic hiring experiences. We believe
+            technology with Google Gemini to simulate realistic hiring experiences. We believe
             great candidates deserve great preparation — without expensive coaching or rigid schedules.
           </p>
         </div>

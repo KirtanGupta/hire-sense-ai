@@ -338,7 +338,7 @@ export default function Hero() {
                   }}
                 />
                 <span style={{ fontSize: "0.8rem", color: "#64748b" }}>
-                  Powered by Groq AI
+                  Powered by Gemini AI
                 </span>
               </div>
 

@@ -16,7 +16,7 @@ const faqs = [
   {
     question: "How is the score calculated?",
     answer:
-      "Groq AI evaluates three key dimensions: technical accuracy (correctness of the answer), completeness (how thorough your response is), and communication quality (clarity and structure). These are weighted to give you an overall score.",
+      "Gemini AI evaluates three key dimensions: technical accuracy (correctness of the answer), completeness (how thorough your response is), and communication quality (clarity and structure). These are weighted to give you an overall score.",
   },
   {
     question: "Which job roles are supported?",

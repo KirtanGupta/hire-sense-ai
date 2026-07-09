@@ -16,12 +16,15 @@ function CircularScore({ score, size = 150, label, color }) {
   const strokeColor = color ||
     (safeScore >= 80 ? "#22c55e" : safeScore >= 60 ? "#f59e0b" : safeScore >= 40 ? "#f97316" : "#ef4444");
 
+  // Sanitize label to make a valid SVG ID (no spaces or parentheses)
+  const safeId = `grad-${(label || "score").replace(/[^a-zA-Z0-9]/g, "")}`;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
       <div style={{ position: "relative", width: size, height: size }}>
         <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
           <defs>
-            <linearGradient id={`grad-${label}`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={safeId} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor={strokeColor} stopOpacity="1" />
               <stop offset="100%" stopColor={strokeColor} stopOpacity="0.6" />
             </linearGradient>
@@ -33,7 +36,7 @@ function CircularScore({ score, size = 150, label, color }) {
           <circle
             cx={size / 2} cy={size / 2} r={radius}
             fill="none"
-            stroke={`url(#grad-${label})`}
+            stroke={`url(#${safeId})`}
             strokeWidth={12}
             strokeDasharray={circumference}
             strokeDashoffset={offset}

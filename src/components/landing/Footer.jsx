@@ -119,7 +119,7 @@ export default function Footer() {
                 {[
                   { icon: <SiNextdotjs size={18} />, label: "Next.js", color: "#f1f5f9" },
                   { icon: <SiMongodb size={18} />, label: "MongoDB", color: "#47A248" },
-                  { icon: <FiCpu size={18} />, label: "Groq AI", color: "#8b5cf6" },
+                  { icon: <FiCpu size={18} />, label: "Gemini AI", color: "#8b5cf6" },
                 ].map((tech) => (
                   <div
                     key={tech.label}
